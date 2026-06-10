@@ -1,3 +1,17 @@
+> **Fork melhorado** do [rtk-ai/rtk](https://github.com/rtk-ai/rtk) com otimizações adicionais para Claude Code.
+> Resultados reais de produção: **84-94% de economia de tokens por sessão**.
+>
+> **Melhorias exclusivas neste fork:**
+> - `FilterLevel::Auto` — filtro automático por tamanho de arquivo
+> - Read dedup — arquivo já lido na sessão = 1 linha em vez do conteúdo completo
+> - Grep dedup — linhas repetidas em 4+ arquivos colapsadas em bloco `[common]`
+> - Find compacto — cap de 4 arquivos por diretório com overflow `+N`
+> - `rtk batch` — agrupa N tarefas em 1 mensagem para Claude
+> - `rtk turns` — contador de turnos com previsão do limite 5H
+> - `rtk resume` — resumo compacto da sessão para retomar após reset do limite
+
+---
+
 <p align="center">
   <img src="https://avatars.githubusercontent.com/u/258253854?v=4" alt="RTK - Rust Token Killer" width="500">
 </p>
