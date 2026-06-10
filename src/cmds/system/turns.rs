@@ -26,7 +26,7 @@ fn find_current_session() -> Option<SessionInfo> {
 
     let session_id = entry["sessionId"].as_str()?.to_string();
     let project = entry["project"].as_str()?;
-    let project_slug = project.replace('/', "-").trim_start_matches('-').to_string();
+    let project_slug = project.replace('/', "-");
 
     let transcript_path = home
         .join(".claude")

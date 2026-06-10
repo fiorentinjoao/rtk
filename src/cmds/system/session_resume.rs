@@ -19,7 +19,7 @@ fn find_last_session_transcript() -> Option<PathBuf> {
 
     let session_id = entry["sessionId"].as_str()?;
     let project = entry["project"].as_str()?;
-    let slug = project.replace('/', "-").trim_start_matches('-').to_string();
+    let slug = project.replace('/', "-");
 
     let transcript = home
         .join(".claude")
