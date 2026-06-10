@@ -6,7 +6,7 @@ use crate::core::tracking;
 use crate::core::utils::resolved_command;
 use anyhow::{Context, Result};
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -100,8 +100,38 @@ pub fn run(
         by_file.entry(file).or_default().push((line_num, cleaned));
     }
 
+    // Deduplicate: find content lines that appear identically in many files
+    let mut content_file_count: HashMap<&str, usize> = HashMap::new();
+    for matches in by_file.values() {
+        let mut seen_in_file: HashSet<&str> = HashSet::new();
+        for (_, content) in matches {
+            if seen_in_file.insert(content.as_str()) {
+                *content_file_count.entry(content.as_str()).or_insert(0) += 1;
+            }
+        }
+    }
+    // Lines appearing in 4+ files are "ubiquitous" — show once as a summary
+    let dedup_threshold = 4.min(by_file.len().saturating_sub(1).max(4));
+    let ubiquitous: HashSet<&str> = content_file_count
+        .iter()
+        .filter(|(_, &count)| count >= dedup_threshold)
+        .map(|(&content, _)| content)
+        .collect();
+
     let mut rtk_output = String::new();
     rtk_output.push_str(&format!("{} matches in {}F:\n\n", total, by_file.len()));
+
+    // Print ubiquitous lines once at the top
+    if !ubiquitous.is_empty() {
+        rtk_output.push_str("[common] appears in many files:\n");
+        let mut sorted: Vec<&str> = ubiquitous.iter().copied().collect();
+        sorted.sort();
+        for content in sorted.iter().take(10) {
+            let count = content_file_count[*content];
+            rtk_output.push_str(&format!("  ({count}x) {content}\n"));
+        }
+        rtk_output.push('\n');
+    }
 
     let mut shown = 0;
     let mut files: Vec<_> = by_file.iter().collect();
@@ -112,11 +142,38 @@ pub fn run(
             break;
         }
 
+        // Filter out ubiquitous lines from per-file output
+        let unique_matches: Vec<_> = matches
+            .iter()
+            .filter(|(_, c)| !ubiquitous.contains(c.as_str()))
+            .collect();
+
         let file_display = compact_path(file);
-        rtk_output.push_str(&format!("[file] {} ({}):\n", file_display, matches.len()));
+        let total_in_file = matches.len();
+        let deduped = total_in_file - unique_matches.len();
+
+        if unique_matches.is_empty() {
+            rtk_output.push_str(&format!(
+                "[file] {} ({} common)\n",
+                file_display, deduped
+            ));
+            rtk_output.push('\n');
+            continue;
+        }
+
+        let dedup_note = if deduped > 0 {
+            format!(" +{deduped} common")
+        } else {
+            String::new()
+        };
+        rtk_output.push_str(&format!(
+            "[file] {} ({}{dedup_note}):\n",
+            file_display,
+            unique_matches.len()
+        ));
 
         let per_file = config::limits().grep_max_per_file;
-        for (line_num, content) in matches.iter().take(per_file) {
+        for (line_num, content) in unique_matches.iter().take(per_file) {
             rtk_output.push_str(&format!("  {:>4}: {}\n", line_num, content));
             shown += 1;
             if shown >= max_results {
@@ -124,8 +181,8 @@ pub fn run(
             }
         }
 
-        if matches.len() > per_file {
-            rtk_output.push_str(&format!("  +{}\n", matches.len() - per_file));
+        if unique_matches.len() > per_file {
+            rtk_output.push_str(&format!("  +{}\n", unique_matches.len() - per_file));
         }
         rtk_output.push('\n');
     }

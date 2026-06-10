@@ -6,6 +6,31 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
+/// Returns path to the per-session read cache file, keyed by parent PID.
+fn session_cache_path() -> std::path::PathBuf {
+    let ppid = unsafe { libc::getppid() };
+    std::env::temp_dir().join(format!("rtk-reads-{ppid}.cache"))
+}
+
+/// Returns true if this file was already read in the current session.
+fn already_read(canonical: &str) -> bool {
+    let cache = session_cache_path();
+    if let Ok(content) = fs::read_to_string(&cache) {
+        content.lines().any(|l| l == canonical)
+    } else {
+        false
+    }
+}
+
+/// Marks a file as read in the current session cache.
+fn mark_read(canonical: &str) {
+    let cache = session_cache_path();
+    use std::io::Write;
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&cache) {
+        let _ = writeln!(f, "{canonical}");
+    }
+}
+
 pub fn run(
     file: &Path,
     level: FilterLevel,
@@ -24,6 +49,29 @@ pub fn run(
     let content = fs::read_to_string(file)
         .with_context(|| format!("Failed to read file: {}", file.display()))?;
 
+    // Dedup: if this file was already read this session, return a short notice
+    let canonical = file
+        .canonicalize()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| file.display().to_string());
+
+    if already_read(&canonical) {
+        let line_count = content.lines().count();
+        let notice = format!(
+            "[já lido nessa sessão — {} linhas omitidas. Use o contexto anterior.]",
+            line_count
+        );
+        println!("{}", notice);
+        timer.track(
+            &format!("cat {}", file.display()),
+            "rtk read",
+            &content,
+            &notice,
+        );
+        return Ok(());
+    }
+    mark_read(&canonical);
+
     // Detect language from extension
     let lang = file
         .extension()
@@ -35,8 +83,18 @@ pub fn run(
         eprintln!("Detected language: {:?}", lang);
     }
 
+    // Resolve Auto level based on file line count
+    let line_count = content.lines().count();
+    let resolved = level.resolve(line_count);
+    if verbose > 0 && level == FilterLevel::Auto && resolved != FilterLevel::None {
+        eprintln!(
+            "rtk: auto-filter: {} lines → {}",
+            line_count, resolved
+        );
+    }
+
     // Apply filter
-    let filter = filter::get_filter(level);
+    let filter = filter::get_filter(resolved);
     let mut filtered = filter.filter(&content, &lang);
 
     // Safety: if filter emptied a non-empty file, fall back to raw content

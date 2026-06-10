@@ -9,6 +9,23 @@ pub enum FilterLevel {
     None,
     Minimal,
     Aggressive,
+    /// Automatically select filter based on file size:
+    /// <100 lines → None, 100-500 → Minimal, >500 → Aggressive
+    Auto,
+}
+
+impl FilterLevel {
+    /// Resolve Auto to a concrete level given the number of lines in a file.
+    pub fn resolve(self, line_count: usize) -> FilterLevel {
+        match self {
+            FilterLevel::Auto => match line_count {
+                0..=99 => FilterLevel::None,
+                100..=500 => FilterLevel::Minimal,
+                _ => FilterLevel::Aggressive,
+            },
+            other => other,
+        }
+    }
 }
 
 impl FromStr for FilterLevel {
@@ -19,6 +36,7 @@ impl FromStr for FilterLevel {
             "none" => Ok(FilterLevel::None),
             "minimal" => Ok(FilterLevel::Minimal),
             "aggressive" => Ok(FilterLevel::Aggressive),
+            "auto" => Ok(FilterLevel::Auto),
             _ => Err(format!("Unknown filter level: {}", s)),
         }
     }
@@ -30,6 +48,7 @@ impl std::fmt::Display for FilterLevel {
             FilterLevel::None => write!(f, "none"),
             FilterLevel::Minimal => write!(f, "minimal"),
             FilterLevel::Aggressive => write!(f, "aggressive"),
+            FilterLevel::Auto => write!(f, "auto"),
         }
     }
 }
@@ -314,7 +333,7 @@ impl FilterStrategy for AggressiveFilter {
 
 pub fn get_filter(level: FilterLevel) -> Box<dyn FilterStrategy> {
     match level {
-        FilterLevel::None => Box::new(NoFilter),
+        FilterLevel::None | FilterLevel::Auto => Box::new(NoFilter),
         FilterLevel::Minimal => Box::new(MinimalFilter),
         FilterLevel::Aggressive => Box::new(AggressiveFilter),
     }

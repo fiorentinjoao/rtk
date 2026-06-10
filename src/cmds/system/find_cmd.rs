@@ -329,19 +329,24 @@ pub fn run(
         };
 
         let remaining_budget = max_results - shown;
-        if files_in_dir.len() <= remaining_budget {
+        // Collapse dirs with many files: show first 4 + count to keep output tight
+        const MAX_PER_DIR: usize = 4;
+        let cap = remaining_budget.min(MAX_PER_DIR);
+        if files_in_dir.len() <= cap {
             println!("{}/ {}", dir_display, files_in_dir.join(" "));
             shown += files_in_dir.len();
         } else {
-            // Partial display: show only what fits in budget
-            let partial: Vec<_> = files_in_dir
-                .iter()
-                .take(remaining_budget)
-                .cloned()
-                .collect();
-            println!("{}/ {}", dir_display, partial.join(" "));
-            shown += partial.len();
-            break;
+            let partial: Vec<_> = files_in_dir.iter().take(cap).cloned().collect();
+            println!(
+                "{}/ {} +{}",
+                dir_display,
+                partial.join(" "),
+                files_in_dir.len() - cap
+            );
+            shown += cap;
+            if shown >= max_results {
+                break;
+            }
         }
     }
 

@@ -19,8 +19,8 @@ use cmds::python::{mypy_cmd, pip_cmd, pytest_cmd, ruff_cmd};
 use cmds::ruby::{rake_cmd, rspec_cmd, rubocop_cmd};
 use cmds::rust::{cargo_cmd, runner};
 use cmds::system::{
-    deps, env_cmd, find_cmd, format_cmd, grep_cmd, json_cmd, local_llm, log_cmd, ls, pipe_cmd,
-    read, summary, tree, wc_cmd,
+    batch, deps, env_cmd, find_cmd, format_cmd, grep_cmd, json_cmd, local_llm, log_cmd, ls,
+    pipe_cmd, read, session_resume, summary, tree, turns, wc_cmd,
 };
 
 use anyhow::{Context, Result};
@@ -91,8 +91,8 @@ enum Commands {
         /// Files to read (supports multiple, like cat)
         #[arg(required = true, num_args = 1..)]
         files: Vec<PathBuf>,
-        /// Filter: none (default, full content), minimal, aggressive
-        #[arg(short, long, default_value = "none")]
+        /// Filter: auto (default), none, minimal, aggressive
+        #[arg(short, long, default_value = "auto")]
         level: core::filter::FilterLevel,
         /// Max lines
         #[arg(short, long, conflicts_with = "tail_lines")]
@@ -725,6 +725,23 @@ enum Commands {
     Hook {
         #[command(subcommand)]
         command: HookCommands,
+    },
+
+    /// Compile multiple short tasks into one optimized Claude message
+    Batch {
+        /// Tasks to batch (omit to read from stdin, one task per line)
+        #[arg(long = "task", short = 't', num_args = 0..)]
+        tasks: Vec<String>,
+    },
+
+    /// Show turn usage and predict when 5H limit will be hit
+    Turns,
+
+    /// Generate compact context summary of current session for resuming after limit reset
+    Resume {
+        /// Output file path (default: ~/.rtk-resume.md)
+        #[arg(short, long)]
+        output: Option<String>,
     },
 }
 
@@ -2300,6 +2317,21 @@ fn run_cli() -> Result<i32> {
             );
 
             core::utils::exit_code_from_status(&status, &cmd_name)
+        }
+
+        Commands::Batch { tasks } => {
+            batch::run(&tasks, cli.verbose)?;
+            0
+        }
+
+        Commands::Turns => {
+            turns::run(cli.verbose)?;
+            0
+        }
+
+        Commands::Resume { output } => {
+            session_resume::run(output.as_deref(), cli.verbose)?;
+            0
         }
 
         Commands::Trust { list } => {

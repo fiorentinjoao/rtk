@@ -1,13 +1,40 @@
-# Project-local RTK filters — commit this file with your repo.
-# Filters here override user-global and built-in filters.
-# Docs: https://github.com/rtk-ai/rtk#custom-filters
+# Project-local RTK filters for the RTK project itself.
 schema_version = 1
 
-# Example: suppress build noise from a custom tool
-# [filters.my-tool]
-# description = "Compact my-tool output"
-# match_command = "^my-tool\\s+build"
-# strip_ansi = true
-# strip_lines_matching = ["^\\s*$", "^Downloading", "^Installing"]
-# max_lines = 30
-# on_empty = "my-tool: ok"
+# Cargo check/clippy: drop noise, keep errors and warnings
+[filters.cargo-check-rtk]
+description = "Compact cargo check/clippy for RTK"
+match_command = "^cargo\\s+(check|clippy)\\b"
+strip_ansi = true
+strip_lines_matching = [
+  "^\\s*Compiling\\s",
+  "^\\s*Finished\\s",
+  "^\\s*Blocking\\s",
+  "^\\s*Downloading\\s",
+  "^\\s*Updating\\s",
+  "^\\s*$",
+]
+max_lines = 60
+on_empty = "cargo check: ok"
+
+[[tests.cargo-check-rtk]]
+name = "strips compiling lines"
+input = "   Compiling rtk v0.37.1\nwarning: unused import\n   Finished dev"
+expected = "warning: unused import"
+
+# Cargo test: keep only failures and summary
+[filters.cargo-test-rtk]
+description = "Compact cargo test for RTK — failures and summary only"
+match_command = "^cargo\\s+test\\b"
+strip_ansi = true
+keep_lines_matching = [
+  "^(FAILED|error\\[|test result|failures:|thread ')",
+  "^cargo test:",
+]
+on_empty = "cargo test: all passed"
+max_lines = 50
+
+[[tests.cargo-test-rtk]]
+name = "keeps failure lines"
+input = "test foo ... ok\ntest bar ... FAILED\ntest result: FAILED. 1 failed"
+expected = "test bar ... FAILED\ntest result: FAILED. 1 failed"
